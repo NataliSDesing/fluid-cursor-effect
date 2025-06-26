@@ -222,3 +222,110 @@ function blit(target) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
+// init.js — продолжение
+
+function update() {
+  applyInputs();
+  step();
+  render(null);
+  requestAnimationFrame(update);
+}
+
+function applyInputs() {
+  for (let i = 0; i < pointers.length; i++) {
+    const p = pointers[i];
+    if (p.moved) {
+      splat(p.x, p.y, p.dx, p.dy, p.color);
+      p.moved = false;
+    }
+  }
+}
+
+function step() {
+  gl.viewport(0, 0, simWidth, simHeight);
+
+  // Curl
+  gl.bindFramebuffer(gl.FRAMEBUFFER, curl.fbo);
+  gl.useProgram(programs.curl.program);
+  gl.uniform2f(programs.curl.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+  gl.uniform1i(programs.curl.uniforms.uVelocity, velocity.read.attach);
+  blit(curl);
+
+  // Vorticity
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velocity.write.fbo);
+  gl.useProgram(programs.vorticity.program);
+  gl.uniform2f(programs.vorticity.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+  gl.uniform1i(programs.vorticity.uniforms.uVelocity, velocity.read.attach);
+  gl.uniform1i(programs.vorticity.uniforms.uCurl, curl.attach);
+  gl.uniform1f(programs.vorticity.uniforms.curl, config.CURL);
+  gl.uniform1f(programs.vorticity.uniforms.dt, config.DT);
+  blit(velocity.write);
+  velocity.swap();
+
+  // Divergence
+  gl.bindFramebuffer(gl.FRAMEBUFFER, divergence.fbo);
+  gl.useProgram(programs.divergence.program);
+  gl.uniform2f(programs.divergence.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+  gl.uniform1i(programs.divergence.uniforms.uVelocity, velocity.read.attach);
+  blit(divergence);
+
+  // Clear pressure
+  gl.bindFramebuffer(gl.FRAMEBUFFER, pressure.write.fbo);
+  gl.useProgram(programs.clear.program);
+  gl.uniform1i(programs.clear.uniforms.uTexture, pressure.read.attach);
+  gl.uniform1f(programs.clear.uniforms.value, config.PRESSURE);
+  blit(pressure.write);
+  pressure.swap();
+
+  // Pressure solve
+  gl.useProgram(programs.pressure.program);
+  for (let i = 0; i < config.PRESSURE_ITERATIONS; i++) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, pressure.write.fbo);
+    gl.uniform2f(programs.pressure.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+    gl.uniform1i(programs.pressure.uniforms.uDivergence, divergence.attach);
+    gl.uniform1i(programs.pressure.uniforms.uPressure, pressure.read.attach);
+    blit(pressure.write);
+    pressure.swap();
+  }
+
+  // Gradient subtract
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velocity.write.fbo);
+  gl.useProgram(programs.gradientSubtract.program);
+  gl.uniform2f(programs.gradientSubtract.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+  gl.uniform1i(programs.gradientSubtract.uniforms.uPressure, pressure.read.attach);
+  gl.uniform1i(programs.gradientSubtract.uniforms.uVelocity, velocity.read.attach);
+  blit(velocity.write);
+  velocity.swap();
+
+  // Advect velocity
+  gl.bindFramebuffer(gl.FRAMEBUFFER, velocity.write.fbo);
+  gl.useProgram(programs.advection.program);
+  gl.uniform2f(programs.advection.uniforms.texelSize, velocity.texelSizeX, velocity.texelSizeY);
+  gl.uniform1i(programs.advection.uniforms.uVelocity, velocity.read.attach);
+  gl.uniform1i(programs.advection.uniforms.uSource, velocity.read.attach);
+  gl.uniform1f(programs.advection.uniforms.dt, config.DT);
+  gl.uniform1f(programs.advection.uniforms.dissipation, config.VELOCITY_DISSIPATION);
+  blit(velocity.write);
+  velocity.swap();
+
+  // Advect density
+  gl.bindFramebuffer(gl.FRAMEBUFFER, density.write.fbo);
+  gl.uniform1i(programs.advection.uniforms.uSource, density.read.attach);
+  gl.uniform1f(programs.advection.uniforms.dissipation, config.DENSITY_DISSIPATION);
+  blit(density.write);
+  density.swap();
+}
+
+function render(target) {
+  if (!target) {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  } else {
+    gl.viewport(0, 0, target.width, target.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+  }
+
+  gl.useProgram(programs.display.program);
+  gl.uniform1i(programs.display.uniforms.uTexture, density.read.attach);
+  blit(target);
+}
