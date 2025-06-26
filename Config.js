@@ -1,8 +1,7 @@
-'use strict';
-
 const config = {
   SIM_RESOLUTION: 128,
-  DYE_RESOLUTION: 1024,
+  DYE_RESOLUTION: 512,
+  CAPTURE_RESOLUTION: 512,
   DENSITY_DISSIPATION: 1.0,
   VELOCITY_DISSIPATION: 0.2,
   PRESSURE: 0.8,
@@ -24,5 +23,10 @@ const config = {
   BLOOM_SOFT_KNEE: 0.7,
   SUNRAYS: true,
   SUNRAYS_RESOLUTION: 196,
-  SUNRAYS_WEIGHT: 1.0
+  SUNRAYS_WEIGHT: 1.0,
+
+  // динамическая настройка, в runtime может обновляться:
+  DT: 0.016,
 };
+
+const PRESSURE_ITERATIONS = config.PRESSURE_ITERATIONS;
